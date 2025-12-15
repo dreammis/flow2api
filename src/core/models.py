@@ -38,6 +38,10 @@ class Token(BaseModel):
     image_concurrency: int = -1  # -1表示无限制
     video_concurrency: int = -1  # -1表示无限制
 
+    # 429禁用相关
+    ban_reason: Optional[str] = None  # 禁用原因: "429_rate_limit" 或 None
+    banned_at: Optional[datetime] = None  # 禁用时间
+
 
 class Project(BaseModel):
     """Project model for VideoFX"""
@@ -56,7 +60,7 @@ class TokenStats(BaseModel):
     image_count: int = 0
     video_count: int = 0
     success_count: int = 0
-    error_count: int = 0
+    error_count: int = 0  # Historical total errors (never reset)
     last_success_at: Optional[datetime] = None
     last_error_at: Optional[datetime] = None
     # 今日统计
