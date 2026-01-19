@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
-from .models import Token, TokenStats, Task, RequestLog, AdminConfig, ProxyConfig, GenerationConfig, CacheConfig, Project, CaptchaConfig
+from .models import Token, TokenStats, Task, RequestLog, AdminConfig, ProxyConfig, GenerationConfig, CacheConfig, Project, CaptchaConfig, PluginConfig
 
 
 class Database:
@@ -167,6 +167,15 @@ class Database:
                 VALUES (1, ?, ?, ?)
             """, (captcha_method, yescaptcha_api_key, yescaptcha_base_url))
 
+        # Ensure plugin_config has a row
+        cursor = await db.execute("SELECT COUNT(*) FROM plugin_config")
+        count = await cursor.fetchone()
+        if count[0] == 0:
+            await db.execute("""
+                INSERT INTO plugin_config (id, connection_token)
+                VALUES (1, '')
+            """)
+
     async def check_and_migrate_db(self, config_dict: dict = None):
         """Check database integrity and perform migrations if needed
 
@@ -207,10 +216,28 @@ class Database:
                         captcha_method TEXT DEFAULT 'browser',
                         yescaptcha_api_key TEXT DEFAULT '',
                         yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
+                        capmonster_api_key TEXT DEFAULT '',
+                        capmonster_base_url TEXT DEFAULT 'https://api.capmonster.cloud',
+                        ezcaptcha_api_key TEXT DEFAULT '',
+                        ezcaptcha_base_url TEXT DEFAULT 'https://api.ez-captcha.com',
+                        capsolver_api_key TEXT DEFAULT '',
+                        capsolver_base_url TEXT DEFAULT 'https://api.capsolver.com',
                         website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                         page_action TEXT DEFAULT 'FLOW_GENERATION',
                         browser_proxy_enabled BOOLEAN DEFAULT 0,
                         browser_proxy_url TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+            # Check and create plugin_config table if missing
+            if not await self._table_exists(db, "plugin_config"):
+                print("  ✓ Creating missing table: plugin_config")
+                await db.execute("""
+                    CREATE TABLE plugin_config (
+                        id INTEGER PRIMARY KEY DEFAULT 1,
+                        connection_token TEXT DEFAULT '',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -256,6 +283,12 @@ class Database:
                 captcha_columns_to_add = [
                     ("browser_proxy_enabled", "BOOLEAN DEFAULT 0"),
                     ("browser_proxy_url", "TEXT"),
+                    ("capmonster_api_key", "TEXT DEFAULT ''"),
+                    ("capmonster_base_url", "TEXT DEFAULT 'https://api.capmonster.cloud'"),
+                    ("ezcaptcha_api_key", "TEXT DEFAULT ''"),
+                    ("ezcaptcha_base_url", "TEXT DEFAULT 'https://api.ez-captcha.com'"),
+                    ("capsolver_api_key", "TEXT DEFAULT ''"),
+                    ("capsolver_base_url", "TEXT DEFAULT 'https://api.capsolver.com'"),
                 ]
 
                 for col_name, col_type in captcha_columns_to_add:
@@ -281,6 +314,20 @@ class Database:
                         try:
                             await db.execute(f"ALTER TABLE token_stats ADD COLUMN {col_name} {col_type}")
                             print(f"  ✓ Added column '{col_name}' to token_stats table")
+                        except Exception as e:
+                            print(f"  ✗ Failed to add column '{col_name}': {e}")
+
+            # Check and add missing columns to plugin_config table
+            if await self._table_exists(db, "plugin_config"):
+                plugin_columns_to_add = [
+                    ("auto_enable_on_update", "BOOLEAN DEFAULT 1"),  # 默认开启
+                ]
+
+                for col_name, col_type in plugin_columns_to_add:
+                    if not await self._column_exists(db, "plugin_config", col_name):
+                        try:
+                            await db.execute(f"ALTER TABLE plugin_config ADD COLUMN {col_name} {col_type}")
+                            print(f"  ✓ Added column '{col_name}' to plugin_config table")
                         except Exception as e:
                             print(f"  ✗ Failed to add column '{col_name}': {e}")
 
@@ -454,10 +501,26 @@ class Database:
                     captcha_method TEXT DEFAULT 'browser',
                     yescaptcha_api_key TEXT DEFAULT '',
                     yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
+                    capmonster_api_key TEXT DEFAULT '',
+                    capmonster_base_url TEXT DEFAULT 'https://api.capmonster.cloud',
+                    ezcaptcha_api_key TEXT DEFAULT '',
+                    ezcaptcha_base_url TEXT DEFAULT 'https://api.ez-captcha.com',
+                    capsolver_api_key TEXT DEFAULT '',
+                    capsolver_base_url TEXT DEFAULT 'https://api.capsolver.com',
                     website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                     page_action TEXT DEFAULT 'FLOW_GENERATION',
                     browser_proxy_enabled BOOLEAN DEFAULT 0,
                     browser_proxy_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Plugin config table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS plugin_config (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    connection_token TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -567,6 +630,16 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM tokens WHERE st = ?", (st,))
+            row = await cursor.fetchone()
+            if row:
+                return Token(**dict(row))
+            return None
+
+    async def get_token_by_email(self, email: str) -> Optional[Token]:
+        """Get token by email"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM tokens WHERE email = ?", (email,))
             row = await cursor.fetchone()
             if row:
                 return Token(**dict(row))
@@ -955,6 +1028,12 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+    async def clear_all_logs(self):
+        """Clear all request logs"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM request_logs")
+            await db.commit()
+
     async def init_config_from_toml(self, config_dict: dict, is_first_startup: bool = True):
         """
         Initialize database configuration from setting.toml
@@ -1138,6 +1217,12 @@ class Database:
         captcha_method: str = None,
         yescaptcha_api_key: str = None,
         yescaptcha_base_url: str = None,
+        capmonster_api_key: str = None,
+        capmonster_base_url: str = None,
+        ezcaptcha_api_key: str = None,
+        ezcaptcha_base_url: str = None,
+        capsolver_api_key: str = None,
+        capsolver_base_url: str = None,
         browser_proxy_enabled: bool = None,
         browser_proxy_url: str = None
     ):
@@ -1150,27 +1235,78 @@ class Database:
             if row:
                 current = dict(row)
                 new_method = captcha_method if captcha_method is not None else current.get("captcha_method", "yescaptcha")
-                new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else current.get("yescaptcha_api_key", "")
-                new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else current.get("yescaptcha_base_url", "https://api.yescaptcha.com")
+                new_yes_key = yescaptcha_api_key if yescaptcha_api_key is not None else current.get("yescaptcha_api_key", "")
+                new_yes_url = yescaptcha_base_url if yescaptcha_base_url is not None else current.get("yescaptcha_base_url", "https://api.yescaptcha.com")
+                new_cap_key = capmonster_api_key if capmonster_api_key is not None else current.get("capmonster_api_key", "")
+                new_cap_url = capmonster_base_url if capmonster_base_url is not None else current.get("capmonster_base_url", "https://api.capmonster.cloud")
+                new_ez_key = ezcaptcha_api_key if ezcaptcha_api_key is not None else current.get("ezcaptcha_api_key", "")
+                new_ez_url = ezcaptcha_base_url if ezcaptcha_base_url is not None else current.get("ezcaptcha_base_url", "https://api.ez-captcha.com")
+                new_cs_key = capsolver_api_key if capsolver_api_key is not None else current.get("capsolver_api_key", "")
+                new_cs_url = capsolver_base_url if capsolver_base_url is not None else current.get("capsolver_base_url", "https://api.capsolver.com")
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else current.get("browser_proxy_enabled", False)
                 new_proxy_url = browser_proxy_url if browser_proxy_url is not None else current.get("browser_proxy_url")
 
                 await db.execute("""
                     UPDATE captcha_config
                     SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?,
+                        capmonster_api_key = ?, capmonster_base_url = ?,
+                        ezcaptcha_api_key = ?, ezcaptcha_base_url = ?,
+                        capsolver_api_key = ?, capsolver_base_url = ?,
                         browser_proxy_enabled = ?, browser_proxy_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = 1
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                """, (new_method, new_yes_key, new_yes_url, new_cap_key, new_cap_url,
+                      new_ez_key, new_ez_url, new_cs_key, new_cs_url, new_proxy_enabled, new_proxy_url))
             else:
                 new_method = captcha_method if captcha_method is not None else "yescaptcha"
-                new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else ""
-                new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else "https://api.yescaptcha.com"
+                new_yes_key = yescaptcha_api_key if yescaptcha_api_key is not None else ""
+                new_yes_url = yescaptcha_base_url if yescaptcha_base_url is not None else "https://api.yescaptcha.com"
+                new_cap_key = capmonster_api_key if capmonster_api_key is not None else ""
+                new_cap_url = capmonster_base_url if capmonster_base_url is not None else "https://api.capmonster.cloud"
+                new_ez_key = ezcaptcha_api_key if ezcaptcha_api_key is not None else ""
+                new_ez_url = ezcaptcha_base_url if ezcaptcha_base_url is not None else "https://api.ez-captcha.com"
+                new_cs_key = capsolver_api_key if capsolver_api_key is not None else ""
+                new_cs_url = capsolver_base_url if capsolver_base_url is not None else "https://api.capsolver.com"
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else False
                 new_proxy_url = browser_proxy_url
 
                 await db.execute("""
-                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, browser_proxy_enabled, browser_proxy_url)
-                    VALUES (1, ?, ?, ?, ?, ?)
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url,
+                        capmonster_api_key, capmonster_base_url, ezcaptcha_api_key, ezcaptcha_base_url,
+                        capsolver_api_key, capsolver_base_url, browser_proxy_enabled, browser_proxy_url)
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (new_method, new_yes_key, new_yes_url, new_cap_key, new_cap_url,
+                      new_ez_key, new_ez_url, new_cs_key, new_cs_url, new_proxy_enabled, new_proxy_url))
+
+            await db.commit()
+
+    # Plugin config operations
+    async def get_plugin_config(self) -> PluginConfig:
+        """Get plugin configuration"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM plugin_config WHERE id = 1")
+            row = await cursor.fetchone()
+            if row:
+                return PluginConfig(**dict(row))
+            return PluginConfig()
+
+    async def update_plugin_config(self, connection_token: str, auto_enable_on_update: bool = True):
+        """Update plugin configuration"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM plugin_config WHERE id = 1")
+            row = await cursor.fetchone()
+
+            if row:
+                await db.execute("""
+                    UPDATE plugin_config
+                    SET connection_token = ?, auto_enable_on_update = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = 1
+                """, (connection_token, auto_enable_on_update))
+            else:
+                await db.execute("""
+                    INSERT INTO plugin_config (id, connection_token, auto_enable_on_update)
+                    VALUES (1, ?, ?)
+                """, (connection_token, auto_enable_on_update))
 
             await db.commit()

@@ -16,7 +16,7 @@
 - 🎨 **文生图** / **图生图**
 - 🎬 **文生视频** / **图生视频**
 - 🎞️ **首尾帧视频**
-- 🔄 **AT自动刷新**
+- 🔄 **AT/ST自动刷新** - AT 过期自动刷新，ST 过期时自动通过浏览器更新（personal 模式）
 - 📊 **余额显示** - 实时查询和显示 VideoFX Credits
 - 🚀 **负载均衡** - 多 Token 轮询和并发控制
 - 🌐 **代理支持** - 支持 HTTP/SOCKS5 代理
@@ -32,6 +32,8 @@
 
 - 由于Flow增加了额外的验证码，你可以自行选择使用浏览器打码或第三发打码：
 注册[YesCaptcha](https://yescaptcha.com/i/13Xd8K)并获取api key，将其填入系统配置页面```YesCaptcha API密钥```区域
+
+- 自动更新st浏览器拓展：[Flow2API-Token-Updater](https://github.com/TheSmallHanCat/Flow2API-Token-Updater)
 
 ### 方式一：Docker 部署（推荐）
 
@@ -117,7 +119,11 @@ python main.py
 | `veo_2_0_t2v_landscape` | 文生视频 | 横屏 |
 
 #### 首尾帧模型 (I2V - Image to Video)
-📸 **支持1-2张图片：首尾帧**
+📸 **支持1-2张图片：1张作为首帧，2张作为首尾帧**
+
+> 💡 **自动适配**：系统会根据图片数量自动选择对应的 model_key
+> - **单帧模式**（1张图）：使用首帧生成视频
+> - **双帧模式**（2张图）：使用首帧+尾帧生成过渡视频
 
 | 模型名称 | 说明| 尺寸 |
 |---------|---------|--------|

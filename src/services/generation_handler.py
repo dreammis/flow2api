@@ -102,6 +102,33 @@ MODEL_CONFIG = {
         "supports_images": False
     },
 
+    # veo_3_1_t2v_fast_portrait_ultra (竖屏)
+    "veo_3_1_t2v_fast_portrait_ultra": {
+        "type": "video",
+        "video_type": "t2v",
+        "model_key": "veo_3_1_t2v_fast_portrait_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": False
+    },
+
+    # veo_3_1_t2v_fast_portrait_ultra_relaxed (竖屏)
+    "veo_3_1_t2v_fast_portrait_ultra_relaxed": {
+        "type": "video",
+        "video_type": "t2v",
+        "model_key": "veo_3_1_t2v_fast_portrait_ultra_relaxed",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": False
+    },
+
+    # veo_3_1_t2v_portrait (竖屏)
+    "veo_3_1_t2v_portrait": {
+        "type": "video",
+        "video_type": "t2v",
+        "model_key": "veo_3_1_t2v_portrait",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": False
+    },
+
     # ========== 首尾帧模型 (I2V - Image to Video) ==========
     # 支持1-2张图片：1张作为首帧，2张作为首尾帧
 
@@ -109,7 +136,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fast_fl_portrait": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl",
+        "model_key": "veo_3_1_i2v_s_fast_portrait_fl_ultra_relaxed",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 1,
@@ -118,7 +145,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fast_fl_landscape": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl",
+        "model_key": "veo_3_1_i2v_s_fast_fl_ultra_relaxed",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 1,
@@ -165,6 +192,66 @@ MODEL_CONFIG = {
         "max_images": 2
     },
 
+    # veo_3_1_i2v_s_fast_ultra (需要新增横竖屏)
+    "veo_3_1_i2v_s_fast_ultra_portrait": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+    "veo_3_1_i2v_s_fast_ultra_landscape": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+
+    # veo_3_1_i2v_s_fast_ultra_relaxed (需要新增横竖屏)
+    "veo_3_1_i2v_s_fast_ultra_relaxed_portrait": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_fast_ultra_relaxed",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+    "veo_3_1_i2v_s_fast_ultra_relaxed_landscape": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_fast_ultra_relaxed",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+
+    # veo_3_1_i2v_s (需要新增横竖屏)
+    "veo_3_1_i2v_s_portrait": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+    "veo_3_1_i2v_s_landscape": {
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": 2
+    },
+
     # ========== 多图生成 (R2V - Reference Images to Video) ==========
     # 支持多张图片,不限制数量
 
@@ -172,7 +259,7 @@ MODEL_CONFIG = {
     "veo_3_0_r2v_fast_portrait": {
         "type": "video",
         "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast",
+        "model_key": "veo_3_0_r2v_fast_portrait_ultra_relaxed",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 0,
@@ -181,7 +268,47 @@ MODEL_CONFIG = {
     "veo_3_0_r2v_fast_landscape": {
         "type": "video",
         "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast",
+        "model_key": "veo_3_0_r2v_fast_ultra_relaxed",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 0,
+        "max_images": None  # 不限制
+    },
+
+    # veo_3_0_r2v_fast_ultra (需要新增横竖屏)
+    "veo_3_0_r2v_fast_ultra_portrait": {
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_0_r2v_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 0,
+        "max_images": None  # 不限制
+    },
+    "veo_3_0_r2v_fast_ultra_landscape": {
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_0_r2v_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 0,
+        "max_images": None  # 不限制
+    },
+
+    # veo_3_0_r2v_fast_ultra_relaxed (需要新增横竖屏)
+    "veo_3_0_r2v_fast_ultra_relaxed_portrait": {
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_0_r2v_fast_ultra_relaxed",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 0,
+        "max_images": None  # 不限制
+    },
+    "veo_3_0_r2v_fast_ultra_relaxed_landscape": {
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_0_r2v_fast_ultra_relaxed",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 0,
@@ -343,11 +470,25 @@ class GenerationHandler:
 
             # 7. 记录成功日志
             duration = time.time() - start_time
+
+            # 构建响应数据，包含生成的URL
+            response_data = {
+                "status": "success",
+                "model": model,
+                "prompt": prompt[:100]
+            }
+
+            # 添加生成的URL（如果有）
+            if hasattr(self, '_last_generated_url') and self._last_generated_url:
+                response_data["url"] = self._last_generated_url
+                # 清除临时存储
+                self._last_generated_url = None
+
             await self._log_request(
                 token.id,
                 f"generate_{generation_type}",
                 {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
-                {"status": "success"},
+                response_data,
                 200,
                 duration
             )
@@ -358,12 +499,8 @@ class GenerationHandler:
             if stream:
                 yield self._create_stream_chunk(f"❌ {error_msg}\n")
             if token:
-                # 检测429错误，立即禁用token
-                if "429" in str(e) or "HTTP Error 429" in str(e):
-                    debug_logger.log_warning(f"[429_BAN] Token {token.id} 遇到429错误，立即禁用")
-                    await self.token_manager.ban_token_for_429(token.id)
-                else:
-                    await self.token_manager.record_error(token.id)
+                # 记录错误（所有错误统一处理，不再特殊处理429）
+                await self.token_manager.record_error(token.id)
             yield self._create_error_response(error_msg)
 
             # 记录失败日志
@@ -464,6 +601,9 @@ class GenerationHandler:
                     yield self._create_stream_chunk("缓存已关闭,正在返回源链接...\n")
 
             # 返回结果
+            # 存储URL用于日志记录
+            self._last_generated_url = local_url
+
             if stream:
                 yield self._create_stream_chunk(
                     f"![Generated Image]({local_url})",
@@ -503,6 +643,44 @@ class GenerationHandler:
             supports_images = model_config.get("supports_images", False)
             min_images = model_config.get("min_images", 0)
             max_images = model_config.get("max_images", 0)
+
+            # 根据账号tier自动调整模型 key
+            model_key = model_config["model_key"]
+            user_tier = token.user_paygate_tier or "PAYGATE_TIER_ONE"
+
+            # TIER_TWO 账号需要使用 ultra 版本的模型
+            if user_tier == "PAYGATE_TIER_TWO":
+                # 如果模型 key 不包含 ultra，自动添加
+                if "ultra" not in model_key:
+                    # veo_3_1_i2v_s_fast_fl -> veo_3_1_i2v_s_fast_ultra_fl
+                    # veo_3_1_t2v_fast -> veo_3_1_t2v_fast_ultra
+                    # veo_3_0_r2v_fast -> veo_3_0_r2v_fast_ultra
+                    if "_fl" in model_key:
+                        model_key = model_key.replace("_fl", "_ultra_fl")
+                    elif model_key.endswith("_fast"):
+                        model_key = model_key + "_ultra"
+                    elif "_fast_" in model_key:
+                        model_key = model_key.replace("_fast_", "_fast_ultra_")
+                    
+                    if stream:
+                        yield self._create_stream_chunk(f"TIER_TWO 账号自动切换到 ultra 模型: {model_key}\n")
+                    debug_logger.log_info(f"[VIDEO] TIER_TWO 账号，模型自动调整: {model_config['model_key']} -> {model_key}")
+
+            # TIER_ONE 账号需要使用非 ultra 版本
+            elif user_tier == "PAYGATE_TIER_ONE":
+                # 如果模型 key 包含 ultra，需要移除（避免用户误用）
+                if "ultra" in model_key:
+                    # veo_3_1_i2v_s_fast_ultra_fl -> veo_3_1_i2v_s_fast_fl
+                    # veo_3_1_t2v_fast_ultra -> veo_3_1_t2v_fast
+                    model_key = model_key.replace("_ultra_fl", "_fl").replace("_ultra", "")
+                    
+                    if stream:
+                        yield self._create_stream_chunk(f"TIER_ONE 账号自动切换到标准模型: {model_key}\n")
+                    debug_logger.log_info(f"[VIDEO] TIER_ONE 账号，模型自动调整: {model_config['model_key']} -> {model_key}")
+
+            # 更新 model_config 中的 model_key
+            model_config = dict(model_config)  # 创建副本避免修改原配置
+            model_config["model_key"] = model_key
 
             # 图片数量
             image_count = len(images) if images else 0
@@ -594,12 +772,16 @@ class GenerationHandler:
                         user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
                     )
                 else:
-                    # 只有首帧
+                    # 只有首帧 - 需要将 model_key 中的 _fl_ 替换为 _
+                    # 例如: veo_3_1_i2v_s_fast_fl_ultra_relaxed -> veo_3_1_i2v_s_fast_ultra_relaxed
+                    #       veo_3_1_i2v_s_fast_portrait_fl_ultra_relaxed -> veo_3_1_i2v_s_fast_portrait_ultra_relaxed
+                    actual_model_key = model_config["model_key"].replace("_fl_", "_")
+                    debug_logger.log_info(f"[I2V] 单帧模式，model_key: {model_config['model_key']} -> {actual_model_key}")
                     result = await self.flow_client.generate_video_start_image(
                         at=token.at,
                         project_id=project_id,
                         prompt=prompt,
-                        model_key=model_config["model_key"],
+                        model_key=actual_model_key,
                         aspect_ratio=model_config["aspect_ratio"],
                         start_media_id=start_media_id,
                         user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
@@ -732,6 +914,9 @@ class GenerationHandler:
                         completed_at=time.time()
                     )
 
+                    # 存储URL用于日志记录
+                    self._last_generated_url = local_url
+
                     # 返回结果
                     if stream:
                         yield self._create_stream_chunk(
@@ -745,8 +930,30 @@ class GenerationHandler:
                         )
                     return
 
+                elif status == "MEDIA_GENERATION_STATUS_FAILED":
+                    # 生成失败 - 提取错误信息
+                    error_info = operation.get("operation", {}).get("error", {})
+                    error_code = error_info.get("code", "unknown")
+                    error_message = error_info.get("message", "未知错误")
+                    
+                    # 更新数据库任务状态
+                    task_id = operation["operation"]["name"]
+                    await self.db.update_task(
+                        task_id,
+                        status="failed",
+                        error_message=f"{error_message} (code: {error_code})",
+                        completed_at=time.time()
+                    )
+                    
+                    # 返回友好的错误消息，提示用户重试
+                    friendly_error = f"视频生成失败: {error_message}，请重试"
+                    if stream:
+                        yield self._create_stream_chunk(f"❌ {friendly_error}\n")
+                    yield self._create_error_response(friendly_error)
+                    return
+
                 elif status.startswith("MEDIA_GENERATION_STATUS_ERROR"):
-                    # 失败
+                    # 其他错误状态
                     yield self._create_error_response(f"视频生成失败: {status}")
                     return
 

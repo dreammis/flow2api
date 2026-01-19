@@ -1,11 +1,12 @@
 """Admin API routes"""
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import secrets
 from ..core.auth import AuthManager
 from ..core.database import Database
+from ..core.config import config
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 
@@ -353,17 +354,32 @@ async def refresh_at(
     token_id: int,
     token: str = Depends(verify_admin_token)
 ):
-    """手动刷新Token的AT (使用ST转换) 🆕"""
+    """手动刷新Token的AT (使用ST转换) 🆕
+    
+    如果 AT 刷新失败且处于 personal 模式，会自动尝试通过浏览器刷新 ST
+    """
+    from ..core.logger import debug_logger
+    from ..core.config import config
+    
+    debug_logger.log_info(f"[API] 手动刷新 AT 请求: token_id={token_id}, captcha_method={config.captcha_method}")
+    
     try:
-        # 调用token_manager的内部刷新方法
+        # 调用token_manager的内部刷新方法（包含 ST 自动刷新逻辑）
         success = await token_manager._refresh_at(token_id)
 
         if success:
             # 获取更新后的token信息
             updated_token = await token_manager.get_token(token_id)
+            
+            message = "AT刷新成功"
+            if config.captcha_method == "personal":
+                message += "（支持ST自动刷新）"
+            
+            debug_logger.log_info(f"[API] AT 刷新成功: token_id={token_id}")
+            
             return {
                 "success": True,
-                "message": "AT刷新成功",
+                "message": message,
                 "token": {
                     "id": updated_token.id,
                     "email": updated_token.email,
@@ -371,8 +387,17 @@ async def refresh_at(
                 }
             }
         else:
-            raise HTTPException(status_code=500, detail="AT刷新失败")
+            debug_logger.log_error(f"[API] AT 刷新失败: token_id={token_id}")
+            
+            error_detail = "AT刷新失败"
+            if config.captcha_method != "personal":
+                error_detail += f"（当前打码模式: {config.captcha_method}，ST自动刷新仅在 personal 模式下可用）"
+            
+            raise HTTPException(status_code=500, detail=error_detail)
+    except HTTPException:
+        raise
     except Exception as e:
+        debug_logger.log_error(f"[API] 刷新AT异常: {str(e)}")
         raise HTTPException(status_code=500, detail=f"刷新AT失败: {str(e)}")
 
 
@@ -646,15 +671,25 @@ async def get_logs(
         "operation": log.get("operation"),
         "status_code": log.get("status_code"),
         "duration": log.get("duration"),
-        "created_at": log.get("created_at")
+        "created_at": log.get("created_at"),
+        "request_body": log.get("request_body"),
+        "response_body": log.get("response_body")
     } for log in logs]
+
+
+@router.delete("/api/logs")
+async def clear_logs(token: str = Depends(verify_admin_token)):
+    """Clear all logs"""
+    try:
+        await db.clear_all_logs()
+        return {"success": True, "message": "所有日志已清空"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/admin/config")
 async def get_admin_config(token: str = Depends(verify_admin_token)):
     """Get admin configuration"""
-    from ..core.config import config
-
     admin_config = await db.get_admin_config()
 
     return {
@@ -708,11 +743,9 @@ async def update_debug_config(
 ):
     """Update debug configuration"""
     try:
-        # Update debug config in database
-        await db.update_debug_config(enabled=request.enabled)
-
-        # 🔥 Hot reload: sync database config to memory
-        await db.reload_config_to_memory()
+        # Update in-memory config only (not database)
+        # This ensures debug mode is automatically disabled on restart
+        config.set_debug_enabled(request.enabled)
 
         status = "enabled" if request.enabled else "disabled"
         return {"success": True, "message": f"Debug mode {status}", "enabled": request.enabled}
@@ -844,6 +877,12 @@ async def update_captcha_config(
     captcha_method = request.get("captcha_method")
     yescaptcha_api_key = request.get("yescaptcha_api_key")
     yescaptcha_base_url = request.get("yescaptcha_base_url")
+    capmonster_api_key = request.get("capmonster_api_key")
+    capmonster_base_url = request.get("capmonster_base_url")
+    ezcaptcha_api_key = request.get("ezcaptcha_api_key")
+    ezcaptcha_base_url = request.get("ezcaptcha_base_url")
+    capsolver_api_key = request.get("capsolver_api_key")
+    capsolver_base_url = request.get("capsolver_base_url")
     browser_proxy_enabled = request.get("browser_proxy_enabled", False)
     browser_proxy_url = request.get("browser_proxy_url", "")
 
@@ -857,6 +896,12 @@ async def update_captcha_config(
         captcha_method=captcha_method,
         yescaptcha_api_key=yescaptcha_api_key,
         yescaptcha_base_url=yescaptcha_base_url,
+        capmonster_api_key=capmonster_api_key,
+        capmonster_base_url=capmonster_base_url,
+        ezcaptcha_api_key=ezcaptcha_api_key,
+        ezcaptcha_base_url=ezcaptcha_base_url,
+        capsolver_api_key=capsolver_api_key,
+        capsolver_base_url=capsolver_base_url,
         browser_proxy_enabled=browser_proxy_enabled,
         browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None
     )
@@ -875,6 +920,170 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "captcha_method": captcha_config.captcha_method,
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
+        "capmonster_api_key": captcha_config.capmonster_api_key,
+        "capmonster_base_url": captcha_config.capmonster_base_url,
+        "ezcaptcha_api_key": captcha_config.ezcaptcha_api_key,
+        "ezcaptcha_base_url": captcha_config.ezcaptcha_base_url,
+        "capsolver_api_key": captcha_config.capsolver_api_key,
+        "capsolver_base_url": captcha_config.capsolver_base_url,
         "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
         "browser_proxy_url": captcha_config.browser_proxy_url or ""
     }
+
+
+# ========== Plugin Configuration Endpoints ==========
+
+@router.get("/api/plugin/config")
+async def get_plugin_config(request: Request, token: str = Depends(verify_admin_token)):
+    """Get plugin configuration"""
+    plugin_config = await db.get_plugin_config()
+
+    # Get the actual domain and port from the request
+    # This allows the connection URL to reflect the user's actual access path
+    host_header = request.headers.get("host", "")
+
+    # Generate connection URL based on actual request
+    if host_header:
+        # Use the actual domain/IP and port from the request
+        connection_url = f"http://{host_header}/api/plugin/update-token"
+    else:
+        # Fallback to config-based URL
+        from ..core.config import config
+        server_host = config.server_host
+        server_port = config.server_port
+
+        if server_host == "0.0.0.0":
+            connection_url = f"http://127.0.0.1:{server_port}/api/plugin/update-token"
+        else:
+            connection_url = f"http://{server_host}:{server_port}/api/plugin/update-token"
+
+    return {
+        "success": True,
+        "config": {
+            "connection_token": plugin_config.connection_token,
+            "connection_url": connection_url,
+            "auto_enable_on_update": plugin_config.auto_enable_on_update
+        }
+    }
+
+
+@router.post("/api/plugin/config")
+async def update_plugin_config(
+    request: dict,
+    token: str = Depends(verify_admin_token)
+):
+    """Update plugin configuration"""
+    connection_token = request.get("connection_token", "")
+    auto_enable_on_update = request.get("auto_enable_on_update", True)  # 默认开启
+
+    # Generate random token if empty
+    if not connection_token:
+        connection_token = secrets.token_urlsafe(32)
+
+    await db.update_plugin_config(
+        connection_token=connection_token,
+        auto_enable_on_update=auto_enable_on_update
+    )
+
+    return {
+        "success": True,
+        "message": "插件配置更新成功",
+        "connection_token": connection_token,
+        "auto_enable_on_update": auto_enable_on_update
+    }
+
+
+@router.post("/api/plugin/update-token")
+async def plugin_update_token(request: dict, authorization: Optional[str] = Header(None)):
+    """Receive token update from Chrome extension (no admin auth required, uses connection_token)"""
+    # Verify connection token
+    plugin_config = await db.get_plugin_config()
+
+    # Extract token from Authorization header
+    provided_token = None
+    if authorization:
+        if authorization.startswith("Bearer "):
+            provided_token = authorization[7:]
+        else:
+            provided_token = authorization
+
+    # Check if token matches
+    if not plugin_config.connection_token or provided_token != plugin_config.connection_token:
+        raise HTTPException(status_code=401, detail="Invalid connection token")
+
+    # Extract session token from request
+    session_token = request.get("session_token")
+
+    if not session_token:
+        raise HTTPException(status_code=400, detail="Missing session_token")
+
+    # Step 1: Convert ST to AT to get user info (including email)
+    try:
+        result = await token_manager.flow_client.st_to_at(session_token)
+        at = result["access_token"]
+        expires = result.get("expires")
+        user_info = result.get("user", {})
+        email = user_info.get("email", "")
+
+        if not email:
+            raise HTTPException(status_code=400, detail="Failed to get email from session token")
+
+        # Parse expiration time
+        from datetime import datetime
+        at_expires = None
+        if expires:
+            try:
+                at_expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+            except:
+                pass
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid session token: {str(e)}")
+
+    # Step 2: Check if token with this email exists
+    existing_token = await db.get_token_by_email(email)
+
+    if existing_token:
+        # Update existing token
+        try:
+            # Update token
+            await token_manager.update_token(
+                token_id=existing_token.id,
+                st=session_token,
+                at=at,
+                at_expires=at_expires
+            )
+
+            # Check if auto-enable is enabled and token is disabled
+            if plugin_config.auto_enable_on_update and not existing_token.is_active:
+                await token_manager.enable_token(existing_token.id)
+                return {
+                    "success": True,
+                    "message": f"Token updated and auto-enabled for {email}",
+                    "action": "updated",
+                    "auto_enabled": True
+                }
+
+            return {
+                "success": True,
+                "message": f"Token updated for {email}",
+                "action": "updated"
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to update token: {str(e)}")
+    else:
+        # Add new token
+        try:
+            new_token = await token_manager.add_token(
+                st=session_token,
+                remark="Added by Chrome Extension"
+            )
+
+            return {
+                "success": True,
+                "message": f"Token added for {new_token.email}",
+                "action": "added",
+                "token_id": new_token.id
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to add token: {str(e)}")

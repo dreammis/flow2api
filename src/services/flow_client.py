@@ -12,11 +12,86 @@ from ..core.config import config
 class FlowClient:
     """VideoFX API客户端"""
 
-    def __init__(self, proxy_manager):
+    def __init__(self, proxy_manager, db=None):
         self.proxy_manager = proxy_manager
+        self.db = db  # Database instance for captcha config
         self.labs_base_url = config.flow_labs_base_url  # https://labs.google/fx/api
         self.api_base_url = config.flow_api_base_url    # https://aisandbox-pa.googleapis.com/v1
         self.timeout = config.flow_timeout
+        # 缓存每个账号的 User-Agent
+        self._user_agent_cache = {}
+
+    def _generate_user_agent(self, account_id: str = None) -> str:
+        """基于账号ID生成固定的 User-Agent
+        
+        Args:
+            account_id: 账号标识（如 email 或 token_id），相同账号返回相同 UA
+            
+        Returns:
+            User-Agent 字符串
+        """
+        # 如果没有提供账号ID，生成随机UA
+        if not account_id:
+            account_id = f"random_{random.randint(1, 999999)}"
+        
+        # 如果已缓存，直接返回
+        if account_id in self._user_agent_cache:
+            return self._user_agent_cache[account_id]
+        
+        # 使用账号ID作为随机种子，确保同一账号生成相同的UA
+        import hashlib
+        seed = int(hashlib.md5(account_id.encode()).hexdigest()[:8], 16)
+        rng = random.Random(seed)
+        
+        # Chrome 版本池
+        chrome_versions = ["130.0.0.0", "131.0.0.0", "132.0.0.0", "129.0.0.0"]
+        # Firefox 版本池
+        firefox_versions = ["133.0", "132.0", "131.0", "134.0"]
+        # Safari 版本池
+        safari_versions = ["18.2", "18.1", "18.0", "17.6"]
+        # Edge 版本池
+        edge_versions = ["130.0.0.0", "131.0.0.0", "132.0.0.0"]
+
+        # 操作系统配置
+        os_configs = [
+            # Windows
+            {
+                "platform": "Windows NT 10.0; Win64; x64",
+                "browsers": [
+                    lambda r: f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{r.choice(chrome_versions)} Safari/537.36",
+                    lambda r: f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{r.choice(firefox_versions).split('.')[0]}.0) Gecko/20100101 Firefox/{r.choice(firefox_versions)}",
+                    lambda r: f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{r.choice(chrome_versions)} Safari/537.36 Edg/{r.choice(edge_versions)}",
+                ]
+            },
+            # macOS
+            {
+                "platform": "Macintosh; Intel Mac OS X 10_15_7",
+                "browsers": [
+                    lambda r: f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{r.choice(chrome_versions)} Safari/537.36",
+                    lambda r: f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{r.choice(safari_versions)} Safari/605.1.15",
+                    lambda r: f"Mozilla/5.0 (Macintosh; Intel Mac OS X 14.{r.randint(0, 7)}; rv:{r.choice(firefox_versions).split('.')[0]}.0) Gecko/20100101 Firefox/{r.choice(firefox_versions)}",
+                ]
+            },
+            # Linux
+            {
+                "platform": "X11; Linux x86_64",
+                "browsers": [
+                    lambda r: f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{r.choice(chrome_versions)} Safari/537.36",
+                    lambda r: f"Mozilla/5.0 (X11; Linux x86_64; rv:{r.choice(firefox_versions).split('.')[0]}.0) Gecko/20100101 Firefox/{r.choice(firefox_versions)}",
+                    lambda r: f"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:{r.choice(firefox_versions).split('.')[0]}.0) Gecko/20100101 Firefox/{r.choice(firefox_versions)}",
+                ]
+            }
+        ]
+
+        # 使用固定种子随机选择操作系统和浏览器
+        os_config = rng.choice(os_configs)
+        browser_generator = rng.choice(os_config["browsers"])
+        user_agent = browser_generator(rng)
+        
+        # 缓存结果
+        self._user_agent_cache[account_id] = user_agent
+        
+        return user_agent
 
     async def _make_request(
         self,
@@ -54,10 +129,17 @@ class FlowClient:
         if use_at and at_token:
             headers["authorization"] = f"Bearer {at_token}"
 
-        # 通用请求头
+        # 确定账号标识（优先使用 token 的前16个字符作为标识）
+        account_id = None
+        if st_token:
+            account_id = st_token[:16]  # 使用 ST 的前16个字符
+        elif at_token:
+            account_id = at_token[:16]  # 使用 AT 的前16个字符
+
+        # 通用请求头 - 基于账号生成固定的 User-Agent
         headers.update({
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": self._generate_user_agent(account_id)
         })
 
         # Log request
@@ -571,7 +653,7 @@ class FlowClient:
         Returns:
             同 generate_video_text
         """
-        url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartAndEndImage"
+        url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartImage"
 
         # 获取 reCAPTCHA token
         recaptcha_token = await self._get_recaptcha_token(project_id) or ""
@@ -684,14 +766,14 @@ class FlowClient:
         return str(uuid.uuid4())
 
     async def _get_recaptcha_token(self, project_id: str) -> Optional[str]:
-        """获取reCAPTCHA token - 支持两种方式"""
+        """获取reCAPTCHA token - 支持多种打码方式"""
         captcha_method = config.captcha_method
 
         # 恒定浏览器打码
         if captcha_method == "personal":
             try:
                 from .browser_captcha_personal import BrowserCaptchaService
-                service = await BrowserCaptchaService.get_instance(self.proxy_manager)
+                service = await BrowserCaptchaService.get_instance(self.db)
                 return await service.get_token(project_id)
             except Exception as e:
                 debug_logger.log_error(f"[reCAPTCHA Browser] error: {str(e)}")
@@ -700,66 +782,97 @@ class FlowClient:
         elif captcha_method == "browser":
             try:
                 from .browser_captcha import BrowserCaptchaService
-                service = await BrowserCaptchaService.get_instance(self.proxy_manager)
+                service = await BrowserCaptchaService.get_instance(self.db)
                 return await service.get_token(project_id)
             except Exception as e:
                 debug_logger.log_error(f"[reCAPTCHA Browser] error: {str(e)}")
                 return None
+        # API打码服务
+        elif captcha_method in ["yescaptcha", "capmonster", "ezcaptcha", "capsolver"]:
+            return await self._get_api_captcha_token(captcha_method, project_id)
         else:
-            # YesCaptcha打码
+            debug_logger.log_error(f"[reCAPTCHA] Unknown captcha method: {captcha_method}")
+            return None
+
+    async def _get_api_captcha_token(self, method: str, project_id: str) -> Optional[str]:
+        """通用API打码服务"""
+        # 获取配置
+        if method == "yescaptcha":
             client_key = config.yescaptcha_api_key
-            if not client_key:
-                debug_logger.log_info("[reCAPTCHA] API key not configured, skipping")
-                return None
-
-            website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
-            website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
             base_url = config.yescaptcha_base_url
-            page_action = "FLOW_GENERATION"
+            task_type = "RecaptchaV3TaskProxylessM1"
+        elif method == "capmonster":
+            client_key = config.capmonster_api_key
+            base_url = config.capmonster_base_url
+            task_type = "RecaptchaV3EnterpriseTask"
+        elif method == "ezcaptcha":
+            client_key = config.ezcaptcha_api_key
+            base_url = config.ezcaptcha_base_url
+            task_type = "ReCaptchaV3EnterpriseTaskProxyless"
+        elif method == "capsolver":
+            client_key = config.capsolver_api_key
+            base_url = config.capsolver_base_url
+            task_type = "ReCaptchaV3EnterpriseTaskProxyLess"
+        else:
+            debug_logger.log_error(f"[reCAPTCHA] Unknown API method: {method}")
+            return None
 
-            try:
-                async with AsyncSession() as session:
-                    create_url = f"{base_url}/createTask"
-                    create_data = {
-                        "clientKey": client_key,
-                        "task": {
-                            "websiteURL": website_url,
-                            "websiteKey": website_key,
-                            "type": "RecaptchaV3TaskProxylessM1",
-                            "pageAction": page_action
-                        }
+        if not client_key:
+            debug_logger.log_info(f"[reCAPTCHA] {method} API key not configured, skipping")
+            return None
+
+        website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
+        website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
+        page_action = "FLOW_GENERATION"
+
+        try:
+            async with AsyncSession() as session:
+                create_url = f"{base_url}/createTask"
+                create_data = {
+                    "clientKey": client_key,
+                    "task": {
+                        "websiteURL": website_url,
+                        "websiteKey": website_key,
+                        "type": task_type,
+                        "pageAction": page_action
                     }
+                }
 
-                    result = await session.post(create_url, json=create_data, impersonate="chrome110")
-                    result_json = result.json()
-                    task_id = result_json.get('taskId')
+                result = await session.post(create_url, json=create_data, impersonate="chrome110")
+                result_json = result.json()
+                task_id = result_json.get('taskId')
 
-                    debug_logger.log_info(f"[reCAPTCHA] created task_id: {task_id}")
+                debug_logger.log_info(f"[reCAPTCHA {method}] created task_id: {task_id}")
 
-                    if not task_id:
-                        return None
-
-                    get_url = f"{base_url}/getTaskResult"
-                    for i in range(40):
-                        get_data = {
-                            "clientKey": client_key,
-                            "taskId": task_id
-                        }
-                        result = await session.post(get_url, json=get_data, impersonate="chrome110")
-                        result_json = result.json()
-
-                        debug_logger.log_info(f"[reCAPTCHA] polling #{i+1}: {result_json}")
-
-                        solution = result_json.get('solution', {})
-                        response = solution.get('gRecaptchaResponse')
-
-                        if response:
-                            return response
-
-                        time.sleep(3)
-
+                if not task_id:
+                    error_desc = result_json.get('errorDescription', 'Unknown error')
+                    debug_logger.log_error(f"[reCAPTCHA {method}] Failed to create task: {error_desc}")
                     return None
 
-            except Exception as e:
-                debug_logger.log_error(f"[reCAPTCHA] error: {str(e)}")
+                get_url = f"{base_url}/getTaskResult"
+                for i in range(40):
+                    get_data = {
+                        "clientKey": client_key,
+                        "taskId": task_id
+                    }
+                    result = await session.post(get_url, json=get_data, impersonate="chrome110")
+                    result_json = result.json()
+
+                    debug_logger.log_info(f"[reCAPTCHA {method}] polling #{i+1}: {result_json}")
+
+                    status = result_json.get('status')
+                    if status == 'ready':
+                        solution = result_json.get('solution', {})
+                        response = solution.get('gRecaptchaResponse')
+                        if response:
+                            debug_logger.log_info(f"[reCAPTCHA {method}] Token获取成功")
+                            return response
+
+                    time.sleep(3)
+
+                debug_logger.log_error(f"[reCAPTCHA {method}] Timeout waiting for token")
                 return None
+
+        except Exception as e:
+            debug_logger.log_error(f"[reCAPTCHA {method}] error: {str(e)}")
+            return None
