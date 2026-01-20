@@ -8,6 +8,7 @@ from ..core.logger import debug_logger
 from ..core.config import config
 from ..core.models import Task, RequestLog
 from .file_cache import FileCache
+from .flow_client import ContentSafetyError
 
 
 # Model configuration
@@ -490,6 +491,25 @@ class GenerationHandler:
                 {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
                 response_data,
                 200,
+                duration
+            )
+
+        except ContentSafetyError as e:
+            # 内容安全错误 - 不记录为账号错误，不影响账号状态
+            error_msg = str(e)
+            debug_logger.log_warning(f"[GENERATION] ⚠️ 内容安全检测: {error_msg}")
+            if stream:
+                yield self._create_stream_chunk(f"⚠️ {error_msg}\n")
+            yield self._create_error_response(error_msg)
+
+            # 记录日志但状态码用 400（客户端错误，非服务端错误）
+            duration = time.time() - start_time
+            await self._log_request(
+                token.id if token else None,
+                f"generate_{generation_type if model_config else 'unknown'}",
+                {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
+                {"error": error_msg, "error_type": "content_safety"},
+                400,
                 duration
             )
 

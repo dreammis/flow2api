@@ -62,8 +62,13 @@ class BrowserCaptchaService:
                     cls._instance = cls(db)
         return cls._instance
 
-    async def initialize(self):
-        """初始化 nodriver 浏览器"""
+    async def initialize(self, proxy_url: Optional[str] = None):
+        """初始化 nodriver 浏览器
+        
+        Args:
+            proxy_url: 代理服务器地址 (e.g. http://127.0.0.1:7890)
+        """
+        # 检查是否需要重启浏览器 (代理变更)
         if self._initialized and self.browser:
             # 检查浏览器是否仍然存活
             try:
@@ -78,28 +83,34 @@ class BrowserCaptchaService:
                 self._initialized = False
 
         try:
-            debug_logger.log_info(f"[BrowserCaptcha] 正在启动 nodriver 浏览器 (用户数据目录: {self.user_data_dir})...")
+            debug_logger.log_info(f"[BrowserCaptcha] 正在启动 nodriver 浏览器 (Dir: {self.user_data_dir}, Proxy: {proxy_url})...")
 
             # 确保 user_data_dir 存在
             os.makedirs(self.user_data_dir, exist_ok=True)
+            
+            # 构建参数
+            browser_args = [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-setuid-sandbox',
+                '--disable-gpu',
+                '--window-size=1280,720',
+                '--profile-directory=Default',
+            ]
+            
+            if proxy_url:
+                browser_args.append(f'--proxy-server={proxy_url}')
 
             # 启动 nodriver 浏览器
             self.browser = await uc.start(
                 headless=self.headless,
                 user_data_dir=self.user_data_dir,
                 sandbox=False,  # nodriver 需要此参数来禁用 sandbox
-                browser_args=[
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-setuid-sandbox',
-                    '--disable-gpu',
-                    '--window-size=1280,720',
-                    '--profile-directory=Default',  # 跳过 Profile 选择器页面
-                ]
+                browser_args=browser_args
             )
 
             self._initialized = True
-            debug_logger.log_info(f"[BrowserCaptcha] ✅ nodriver 浏览器已启动 (Profile: {self.user_data_dir})")
+            debug_logger.log_info(f"[BrowserCaptcha] ✅ nodriver 浏览器已启动")
 
         except Exception as e:
             debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动失败: {str(e)}")
@@ -675,3 +686,15 @@ class BrowserCaptchaService:
         if self._resident_tabs:
             return next(iter(self._resident_tabs.keys()))
         return self.resident_project_id
+
+    async def get_user_agent(self) -> Optional[str]:
+        """获取浏览器的 User-Agent"""
+        # 如果浏览器未初始化，先初始化
+        if not self._initialized or not self.browser:
+            await self.initialize()
+            
+        try:
+            return await self.browser.evaluate("navigator.userAgent")
+        except Exception as e:
+            debug_logger.log_error(f"[BrowserCaptcha] 获取User-Agent失败: {e}")
+            return None

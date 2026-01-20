@@ -9,6 +9,11 @@ from ..core.logger import debug_logger
 from ..core.config import config
 
 
+class ContentSafetyError(Exception):
+    """内容安全检测错误 - 不应导致账号被禁用"""
+    pass
+
+
 class FlowClient:
     """VideoFX API客户端"""
 
@@ -142,6 +147,20 @@ class FlowClient:
             "User-Agent": self._generate_user_agent(account_id)
         })
 
+        # 个人打码模式下，覆盖 User-Agent 为真实浏览器的 UA
+        if config.captcha_method == "personal":
+            try:
+                from .browser_captcha_personal import BrowserCaptchaService
+                service = await BrowserCaptchaService.get_instance(self.db)
+                # 获取真实浏览器UA (如果浏览器未启动，这会启动浏览器)
+                browser_ua = await service.get_user_agent()
+                if browser_ua:
+                    headers["User-Agent"] = browser_ua
+            except Exception as e:
+                # 仅记录警告，不中断流程 (可能回退到随机UA)
+                debug_logger.log_warning(f"获取真实浏览器UA失败: {e}")
+
+        
         # Log request
         if config.debug_enabled:
             debug_logger.log_request(
@@ -162,7 +181,7 @@ class FlowClient:
                         headers=headers,
                         proxy=proxy_url,
                         timeout=self.timeout,
-                        impersonate="chrome110"
+                        impersonate="chrome124"
                     )
                 else:  # POST
                     response = await session.post(
@@ -171,7 +190,7 @@ class FlowClient:
                         json=json_data,
                         proxy=proxy_url,
                         timeout=self.timeout,
-                        impersonate="chrome110"
+                        impersonate="chrome124"
                     )
 
                 duration_ms = (time.time() - start_time) * 1000
@@ -184,10 +203,36 @@ class FlowClient:
                         body=response.text,
                         duration_ms=duration_ms
                     )
+                #
+                # 检查 HTTP 错误 - 在 raise_for_status 之前解析响应
+                if response.status_code >= 400:
+                    try:
+                        error_data = response.json()
+                        error_info = error_data.get("error", {})
+                        error_reason = ""
+
+                        # 提取 reason（可能在 details 数组中）
+                        details = error_info.get("details", [])
+                        for detail in details:
+                            if detail.get("reason"):
+                                error_reason = detail.get("reason")
+                                break
+
+                        # 内容安全错误 - 不应导致账号被禁用
+                        if error_reason == "PUBLIC_ERROR_UNSAFE_GENERATION":
+                            raise ContentSafetyError(
+                                f"内容安全检测未通过: {error_info.get('message', '提示词可能包含不安全内容')}"
+                            )
+                    except ContentSafetyError:
+                        raise  # 重新抛出 ContentSafetyError
+                    except Exception:
+                        pass  # JSON 解析失败，继续使用 raise_for_status
 
                 response.raise_for_status()
                 return response.json()
 
+        except ContentSafetyError:
+            raise  # 直接传播，不包装
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             error_msg = str(e)
@@ -412,7 +457,9 @@ class FlowClient:
         json_data = {
             "clientContext": {
                 "recaptchaToken": recaptcha_token,
-                "sessionId": session_id
+                "sessionId": session_id,
+                "projectId": project_id,
+                "tool": "PINHOLE"
             },
             "requests": [request_data]
         }
